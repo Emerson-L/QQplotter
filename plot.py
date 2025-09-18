@@ -168,50 +168,6 @@ class MainWindow(QMainWindow):
         self.hist_canvas.data = new_data
         self.hist_canvas.plot_histogram()
 
-# class QQPlotCanvas(FigureCanvas):
-#     def __init__(self, data):
-#         self.fig, self.ax = plt.subplots()
-#         super().__init__(self.fig)
-#         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-#         self.data = data
-#         self.plot_qq()
-
-#     def plot_qq(self):
-#         self.ax.clear()
-#         if len(self.data) > 0:
-#             stats.probplot(self.data, dist="norm", plot=self.ax)
-#         self.ax.set_title("QQ Plot")
-#         self.ax.set_ylabel("Sample Quantiles") 
-#         self.ax.set_xlabel("Theoretical Quantiles") 
-#         self.draw()
-
-#     def update_data(self, data):
-#         self.data = data
-#         self.plot_qq()
-
-# # Main app window - handles updating qq plot when histogram changes
-# class MainWindow(QMainWindow):
-#     def __init__(self):
-#         super().__init__()
-#         self.setWindowTitle("Interactive Histogram and QQ Plot")
-#         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
-
-#         self.bins = NUM_BINS
-
-#         # Use percent point function (inverse CDF) for a perfect normal
-#         self.data = stats.norm.ppf(np.linspace(1/(N+1), N/(N+1), N))
-
-#         central = QWidget()
-#         layout = QHBoxLayout(central)
-#         self.hist_canvas = HistogramCanvas(self.data, self.bins, self.update_qq)
-#         self.qq_canvas = QQPlotCanvas(self.data)
-#         layout.addWidget(self.hist_canvas)
-#         layout.addWidget(self.qq_canvas)
-#         self.setCentralWidget(central)
-
-#     def update_qq(self, new_data):
-#         self.qq_canvas.update_data(new_data)
-
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()
