@@ -2,9 +2,9 @@ import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QSizePolicy)
 from PyQt5.QtCore import Qt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import scipy.stats as stats
 
 NUM_BINS = 100
@@ -70,17 +70,27 @@ class HistogramCanvas(FigureCanvas):
 
 #QQ plot canvas - updates when histogram changes
 class QQPlotCanvas(FigureCanvas):
-    def __init__(self, data):
+    def __init__(self, data, on_update):
         self.fig, self.ax = plt.subplots()
         super().__init__(self.fig)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.data = data
+        self.on_update = on_update
+        self.qq_points = None
+        self._dragging = False
+        self._drag_idx = None
         self.plot_qq()
+        self.mpl_connect("button_press_event", self.on_press)
+        self.mpl_connect("motion_notify_event", self.on_motion)
+        self.mpl_connect("button_release_event", self.on_release)
 
     def plot_qq(self):
         self.ax.clear()
         if len(self.data) > 0:
-            stats.probplot(self.data, dist="norm", plot=self.ax)
+            (osm, osr), (slope, intercept, r) = stats.probplot(self.data, dist="norm")
+            self.ax.plot(osm, osr, 'o', picker=5, color='C0')
+            self.ax.plot(osm, slope*osm + intercept, 'r-', lw=2)
+            self.qq_points = (osm, osr)
         self.ax.set_title("QQ Plot")
         self.ax.set_ylabel("Sample Quantiles") 
         self.ax.set_xlabel("Theoretical Quantiles") 
@@ -88,6 +98,47 @@ class QQPlotCanvas(FigureCanvas):
 
     def update_data(self, data):
         self.data = data
+        self.plot_qq()
+
+    def find_nearest_point(self, x, y):
+        if self.qq_points is None:
+            return None
+        osm, osr = self.qq_points
+        dists = np.sqrt((osm - x)**2 + (osr - y)**2)
+        idx = np.argmin(dists)
+        if dists[idx] < 0.1:  # Only pick if close enough
+            return idx
+        return None
+
+    def on_press(self, event):
+        if event.inaxes != self.ax or self.qq_points is None:
+            return
+        idx = self.find_nearest_point(event.xdata, event.ydata)
+        if idx is not None:
+            self._dragging = True
+            self._drag_idx = idx
+            self.set_point_y(idx, event.ydata)
+
+    def on_motion(self, event):
+        if not self._dragging or event.inaxes != self.ax or event.ydata is None:
+            return
+        self.set_point_y(self._drag_idx, event.ydata)
+
+    def on_release(self, event):
+        self._dragging = False
+        self._drag_idx = None
+
+    def set_point_y(self, idx, new_y):
+        # Update the data so that the idx-th order statistic is new_y
+        # Sort the data, replace idx-th value, then unsort to preserve order
+        sorted_idx = np.argsort(self.data)
+        sorted_data = np.sort(self.data)
+        sorted_data[idx] = new_y
+        # Reconstruct data in original order
+        unsorted_data = np.empty_like(sorted_data)
+        unsorted_data[sorted_idx] = sorted_data
+        self.data = unsorted_data
+        self.on_update(self.data)
         self.plot_qq()
 
 # Main app window - handles updating qq plot when histogram changes
@@ -105,13 +156,61 @@ class MainWindow(QMainWindow):
         central = QWidget()
         layout = QHBoxLayout(central)
         self.hist_canvas = HistogramCanvas(self.data, self.bins, self.update_qq)
-        self.qq_canvas = QQPlotCanvas(self.data)
+        self.qq_canvas = QQPlotCanvas(self.data, self.update_hist)
         layout.addWidget(self.hist_canvas)
         layout.addWidget(self.qq_canvas)
         self.setCentralWidget(central)
 
     def update_qq(self, new_data):
         self.qq_canvas.update_data(new_data)
+
+    def update_hist(self, new_data):
+        self.hist_canvas.data = new_data
+        self.hist_canvas.plot_histogram()
+
+# class QQPlotCanvas(FigureCanvas):
+#     def __init__(self, data):
+#         self.fig, self.ax = plt.subplots()
+#         super().__init__(self.fig)
+#         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+#         self.data = data
+#         self.plot_qq()
+
+#     def plot_qq(self):
+#         self.ax.clear()
+#         if len(self.data) > 0:
+#             stats.probplot(self.data, dist="norm", plot=self.ax)
+#         self.ax.set_title("QQ Plot")
+#         self.ax.set_ylabel("Sample Quantiles") 
+#         self.ax.set_xlabel("Theoretical Quantiles") 
+#         self.draw()
+
+#     def update_data(self, data):
+#         self.data = data
+#         self.plot_qq()
+
+# # Main app window - handles updating qq plot when histogram changes
+# class MainWindow(QMainWindow):
+#     def __init__(self):
+#         super().__init__()
+#         self.setWindowTitle("Interactive Histogram and QQ Plot")
+#         self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
+
+#         self.bins = NUM_BINS
+
+#         # Use percent point function (inverse CDF) for a perfect normal
+#         self.data = stats.norm.ppf(np.linspace(1/(N+1), N/(N+1), N))
+
+#         central = QWidget()
+#         layout = QHBoxLayout(central)
+#         self.hist_canvas = HistogramCanvas(self.data, self.bins, self.update_qq)
+#         self.qq_canvas = QQPlotCanvas(self.data)
+#         layout.addWidget(self.hist_canvas)
+#         layout.addWidget(self.qq_canvas)
+#         self.setCentralWidget(central)
+
+#     def update_qq(self, new_data):
+#         self.qq_canvas.update_data(new_data)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
